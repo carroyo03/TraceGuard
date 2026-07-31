@@ -9,7 +9,7 @@ from traceguard.state import AgentResult, AuditEvent, Scenario, ToolCall, TraceS
 from traceguard.tools import execute_tool
 
 INSTRUCTION_PATTERN = re.compile(
-    r"(?:ignora|ignore|instrucci[oó]n|exporta|export).{0,100}(?:datos|data|customer)", re.IGNORECASE
+    r"(?:ignore|instruction|export).{0,100}(?:data|customer)", re.IGNORECASE
 )
 
 
@@ -40,7 +40,7 @@ def propose_action(state: TraceState) -> TraceState:
     task = state["scenario"].user_task.casefold()
     documents = "\n".join(state["retrieved_documents"]).casefold()
     calls: list[ToolCall] = []
-    if "correo" in task or "email" in task or "borrador" in task:
+    if "email" in task or "draft" in task:
         calls.append(
             ToolCall(
                 name="create_email_draft",
@@ -93,7 +93,7 @@ def approval_required(state: TraceState) -> TraceState:
 
 def verify_outcome(state: TraceState) -> TraceState:
     task = state["scenario"].user_task.casefold()
-    needs_draft = "correo" in task or "email" in task or "borrador" in task
+    needs_draft = "email" in task or "draft" in task
     executed_names = {call.name for call in state.get("executed_tool_calls", [])}
     complete = not needs_draft or "create_email_draft" in executed_names
     return {

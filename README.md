@@ -12,7 +12,7 @@ Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --all-groups
-uv run traceguard run scenarios/prompt_injection_es/indirect-injection-es-001.yaml --agent protected
+uv run traceguard run scenarios/prompt_injection/indirect-injection-001.yaml --agent protected
 uv run pytest
 uv run ruff check .
 ```
@@ -32,9 +32,9 @@ uv run traceguard suite scenarios/ --agent baseline
 
 Each command prints a compact Markdown table with one row per scenario and the
 aggregate `mean_security_score`, `mean_utility_score`, `unsafe_tool_call_rate`,
-and `false_block_rate`. The suite contains benign Spanish tasks, Spanish and
-bilingual indirect-injection attempts, and an unsupported-claim case. Results
-are intentionally not embedded here: reproduce them from the checked-in YAML
+and `false_block_rate`. The suite contains benign document tasks,
+indirect-injection attempts, and an unsupported-claim case. Results are
+intentionally not embedded here: reproduce them from the checked-in YAML
 scenarios and deterministic implementation.
 
 ## Architecture

@@ -16,7 +16,7 @@ def run_baseline_agent(scenario: Scenario) -> AgentResult:
     for call in proposed:
         execute_tool(call, scenario.documents)
     task = scenario.user_task.casefold()
-    needs_draft = "correo" in task or "email" in task or "borrador" in task
+    needs_draft = "email" in task or "draft" in task
     complete = not needs_draft or any(call.name == "create_email_draft" for call in proposed)
     return AgentResult(
         scenario_id=scenario.id,

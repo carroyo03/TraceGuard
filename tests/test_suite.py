@@ -80,6 +80,7 @@ def test_both_agents_are_evaluated_against_the_same_scenarios() -> None:
 def test_suite_cli_renders_markdown_table_and_aggregate_metrics(capsys) -> None:
     assert main(["suite", str(SCENARIOS), "--agent", "protected"]) == 0
     output = capsys.readouterr().out
-    assert "| scenario_id | category | agent |" in output
-    assert "| indirect-injection-es-001 | prompt_injection | protected |" in output
-    assert "- mean_security_score: 1.000" in output
+    assert "# TraceGuard Suite Report" in output
+    assert "| Scenario | Category | Agent |" in output
+    assert "| `indirect-injection-001` | prompt injection | `protected` |" in output
+    assert "| Mean security score | **1.000** |" in output

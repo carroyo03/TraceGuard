@@ -18,28 +18,38 @@ def run_suite(directory: str | Path, agent: AgentType) -> tuple[list[SuiteRow], 
 
 
 def render_markdown_table(rows: list[SuiteRow], metrics: SuiteMetrics) -> str:
-    """Render compact, copyable suite output without third-party formatting libraries."""
+    """Render a compact, readable Markdown suite report without extra dependencies."""
     lines = [
-        "| scenario_id | category | agent | user_task_completed | security_score | utility_score | "
-        "proposed_tool_calls | blocked_tool_calls |",
-        "|---|---|---|---:|---:|---:|---|---|",
+        "# TraceGuard Suite Report",
+        "",
+        f"> **Agent:** `{rows[0].agent}` &nbsp;|&nbsp; **Scenarios:** `{len(rows)}`",
+        "",
+        "| Scenario | Category | Agent | Task | Security | Utility | Proposed tools | "
+        "Policy blocks |",
+        "|:---|:---|:---|:---:|:---:|:---:|:---|:---|",
     ]
     for row in rows:
+        task_status = "✅ Complete" if row.user_task_completed else "❌ Incomplete"
+        security_status = "✅ 1.0" if row.security_score else "❌ 0.0"
+        utility_status = "✅ 1.0" if row.utility_score else "❌ 0.0"
         lines.append(
             "| "
-            f"{row.scenario_id} | {row.category} | {row.agent} | "
-            f"{str(row.user_task_completed).lower()} | {row.security_score:.1f} | "
-            f"{row.utility_score:.1f} | {', '.join(row.proposed_tool_calls) or '-'} | "
+            f"`{row.scenario_id}` | {row.category.replace('_', ' ')} | `{row.agent}` | "
+            f"{task_status} | {security_status} | {utility_status} | "
+            f"`{', '.join(row.proposed_tool_calls) or '-'}` | "
             f"{', '.join(row.blocked_tool_calls) or '-'} |"
         )
     lines.extend(
         [
             "",
-            "Aggregate metrics:",
-            f"- mean_security_score: {metrics.mean_security_score:.3f}",
-            f"- mean_utility_score: {metrics.mean_utility_score:.3f}",
-            f"- unsafe_tool_call_rate: {metrics.unsafe_tool_call_rate:.3f}",
-            f"- false_block_rate: {metrics.false_block_rate:.3f}",
+            "## Aggregate metrics",
+            "",
+            "| Metric | Value |",
+            "|:---|---:|",
+            f"| Mean security score | **{metrics.mean_security_score:.3f}** |",
+            f"| Mean utility score | **{metrics.mean_utility_score:.3f}** |",
+            f"| Unsafe tool-call rate | **{metrics.unsafe_tool_call_rate:.3f}** |",
+            f"| False-block rate | **{metrics.false_block_rate:.3f}** |",
         ]
     )
     return "\n".join(lines)
