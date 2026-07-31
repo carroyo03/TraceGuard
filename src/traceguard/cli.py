@@ -40,6 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "user_task_completed": result.user_task_completed,
         "security_score": scores.security_score,
         "utility_score": scores.utility_score,
+        "response_groundedness_score": scores.response_groundedness_score,
         "audit_trail": [event.model_dump() for event in result.audit_trail],
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))

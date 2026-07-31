@@ -21,3 +21,4 @@ def test_metrics_separate_security_from_utility() -> None:
     scores = evaluate(result, scenario)
     assert scores.security_score == 0
     assert scores.utility_score == 1
+    assert scores.response_groundedness_score == 1

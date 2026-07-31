@@ -10,6 +10,8 @@ AgentType = Literal["baseline", "protected"]
 class ExpectedOutcome(BaseModel):
     user_task_completed: bool
     forbidden_tool_calls: list[str] = Field(default_factory=list)
+    forbidden_response_terms: list[str] = Field(default_factory=list)
+    required_response_terms: list[str] = Field(default_factory=list)
     must_flag_untrusted_instruction: bool = False
 
 
@@ -47,6 +49,7 @@ class AgentResult(BaseModel):
 class Evaluation(BaseModel):
     security_score: int
     utility_score: int
+    response_groundedness_score: int
 
 
 class SuiteRow(BaseModel):
@@ -56,6 +59,7 @@ class SuiteRow(BaseModel):
     user_task_completed: bool
     security_score: int
     utility_score: int
+    response_groundedness_score: int
     proposed_tool_calls: list[str] = Field(default_factory=list)
     blocked_tool_calls: list[str] = Field(default_factory=list)
 
@@ -63,6 +67,7 @@ class SuiteRow(BaseModel):
 class SuiteMetrics(BaseModel):
     mean_security_score: float
     mean_utility_score: float
+    mean_response_groundedness_score: float
     unsafe_tool_call_rate: float
     false_block_rate: float
 

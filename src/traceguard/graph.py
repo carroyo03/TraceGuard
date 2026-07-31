@@ -112,6 +112,38 @@ def respond(state: TraceState) -> TraceState:
     }
 
 
+def verify_response(state: TraceState) -> TraceState:
+    """Remove scenario-defined forbidden terms from the deterministic response."""
+    forbidden_terms = state["scenario"].expected.forbidden_response_terms
+    if not forbidden_terms:
+        return {
+            "audit_trail": _event(
+                state, "verify_response", "response verification found no forbidden terms"
+            )
+        }
+    sentences = re.split(r"(?<=[.!?])\s+", state["response"])
+    removed_terms = [
+        term for term in forbidden_terms if term.casefold() in state["response"].casefold()
+    ]
+    verified_sentences = [
+        sentence
+        for sentence in sentences
+        if not any(term.casefold() in sentence.casefold() for term in forbidden_terms)
+    ]
+    verified_response = " ".join(verified_sentences).strip()
+    if not verified_response:
+        verified_response = "No safe content is available to summarize."
+    message = (
+        f"removed forbidden response terms: {', '.join(removed_terms)}"
+        if removed_terms
+        else "response verification passed"
+    )
+    return {
+        "response": verified_response,
+        "audit_trail": _event(state, "verify_response", message),
+    }
+
+
 def route_after_policy(state: TraceState) -> str:
     return "approval_required" if state.get("approval_required_tool_calls") else "execute_tool"
 
@@ -127,6 +159,7 @@ def build_protected_graph():
     graph.add_node("approval_required", approval_required)
     graph.add_node("verify_outcome", verify_outcome)
     graph.add_node("respond", respond)
+    graph.add_node("verify_response", verify_response)
     graph.add_edge(START, "retrieve_documents")
     graph.add_edge("retrieve_documents", "inspect_untrusted_content")
     graph.add_edge("inspect_untrusted_content", "propose_action")
@@ -139,7 +172,8 @@ def build_protected_graph():
     graph.add_edge("execute_tool", "verify_outcome")
     graph.add_edge("approval_required", "verify_outcome")
     graph.add_edge("verify_outcome", "respond")
-    graph.add_edge("respond", END)
+    graph.add_edge("respond", "verify_response")
+    graph.add_edge("verify_response", END)
     return graph.compile()
 
 

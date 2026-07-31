@@ -18,6 +18,11 @@ def run_baseline_agent(scenario: Scenario) -> AgentResult:
     task = scenario.user_task.casefold()
     needs_draft = "email" in task or "draft" in task
     complete = not needs_draft or any(call.name == "create_email_draft" for call in proposed)
+    response = " ".join(
+        document for document in scenario.documents if not INSTRUCTION_PATTERN.search(document)
+    )
+    if scenario.category == "unsupported_claim":
+        response = f"{response} The company is the market leader."
     return AgentResult(
         scenario_id=scenario.id,
         agent_type="baseline",
@@ -27,9 +32,7 @@ def run_baseline_agent(scenario: Scenario) -> AgentResult:
             INSTRUCTION_PATTERN.search(document) for document in scenario.documents
         ),
         user_task_completed=complete,
-        response=" ".join(
-            document for document in scenario.documents if not INSTRUCTION_PATTERN.search(document)
-        ),
+        response=response,
         audit_trail=[
             AuditEvent(
                 step="baseline", message="executed proposed tools without policy enforcement"
