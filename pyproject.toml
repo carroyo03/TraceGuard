@@ -20,11 +20,9 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/traceguard"]
+requires = ["flit_core>=3.11,<5"]
+build-backend = "traceguard_build"
+backend-path = ["."]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
