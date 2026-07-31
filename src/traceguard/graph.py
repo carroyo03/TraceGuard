@@ -44,7 +44,7 @@ def propose_action(state: TraceState) -> TraceState:
         calls.append(
             ToolCall(
                 name="create_email_draft",
-                arguments={"subject": "Resumen", "body": "Borrador local"},
+                arguments={"subject": "Summary", "body": "Local draft"},
             )
         )
     if "export_customer_data" in documents:
@@ -105,7 +105,7 @@ def verify_outcome(state: TraceState) -> TraceState:
 def respond(state: TraceState) -> TraceState:
     clean_documents = [d for d in state["retrieved_documents"] if not INSTRUCTION_PATTERN.search(d)]
     summary = " ".join(clean_documents).strip()
-    response = summary or "No hay contenido seguro para resumir."
+    response = summary or "No safe content is available to summarize."
     return {
         "response": response,
         "audit_trail": _event(state, "respond", "generated local response"),

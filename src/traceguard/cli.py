@@ -8,6 +8,7 @@ from traceguard.baseline import run_baseline_agent
 from traceguard.evaluator import evaluate
 from traceguard.graph import run_protected_agent
 from traceguard.scenarios import load_scenario
+from traceguard.suite import render_markdown_table, run_suite
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -16,7 +17,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_parser = subparsers.add_parser("run", help="run one YAML scenario")
     run_parser.add_argument("scenario", help="path to a YAML scenario")
     run_parser.add_argument("--agent", choices=("baseline", "protected"), default="protected")
+    suite_parser = subparsers.add_parser("suite", help="run every YAML scenario in a directory")
+    suite_parser.add_argument("scenario_directory", help="directory containing YAML scenarios")
+    suite_parser.add_argument("--agent", choices=("baseline", "protected"), default="protected")
     args = parser.parse_args(argv)
+
+    if args.command == "suite":
+        rows, metrics = run_suite(args.scenario_directory, args.agent)
+        print(render_markdown_table(rows, metrics))
+        return 0
 
     scenario = load_scenario(args.scenario)
     result = (

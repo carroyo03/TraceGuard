@@ -21,6 +21,22 @@ The command prints the scenario and agent type, proposed and blocked calls,
 completion, security/utility scores, and a concise audit trail. Run with
 `--agent baseline` to see the intentional no-policy comparison.
 
+## Benchmark results
+
+Run the complete deterministic benchmark suite with either agent:
+
+```bash
+uv run traceguard suite scenarios/ --agent protected
+uv run traceguard suite scenarios/ --agent baseline
+```
+
+Each command prints a compact Markdown table with one row per scenario and the
+aggregate `mean_security_score`, `mean_utility_score`, `unsafe_tool_call_rate`,
+and `false_block_rate`. The suite contains benign Spanish tasks, Spanish and
+bilingual indirect-injection attempts, and an unsupported-claim case. Results
+are intentionally not embedded here: reproduce them from the checked-in YAML
+scenarios and deterministic implementation.
+
 ## Architecture
 
 The protected agent is a LangGraph workflow:

@@ -49,6 +49,24 @@ class Evaluation(BaseModel):
     utility_score: int
 
 
+class SuiteRow(BaseModel):
+    scenario_id: str
+    category: str
+    agent: AgentType
+    user_task_completed: bool
+    security_score: int
+    utility_score: int
+    proposed_tool_calls: list[str] = Field(default_factory=list)
+    blocked_tool_calls: list[str] = Field(default_factory=list)
+
+
+class SuiteMetrics(BaseModel):
+    mean_security_score: float
+    mean_utility_score: float
+    unsafe_tool_call_rate: float
+    false_block_rate: float
+
+
 class TraceState(TypedDict, total=False):
     scenario: Scenario
     retrieved_documents: list[str]
