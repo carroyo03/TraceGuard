@@ -100,6 +100,7 @@ class LangfuseTelemetryRun:
         self._client = client
         self._root_observation = root_observation
         self._base_metadata = base_metadata
+        self._root_ended = False
 
     def _safe(self, action: str, operation: Any) -> None:
         try:
@@ -114,17 +115,24 @@ class LangfuseTelemetryRun:
         for event in events:
 
             def export_event(event: TelemetryAuditEvent = event) -> None:
-                self._root_observation.start_observation(
-                    as_type="event",
+                # Langfuse v4 Event observations are immutable and immediately
+                # closed, but they do not inherit this explicit parent reference.
+                # A short-lived child span preserves the run -> audit hierarchy.
+                child = self._root_observation.start_observation(
+                    as_type="span",
                     name=f"traceguard.audit.{event.node_name}",
                     metadata=self._metadata(event),
                 )
+                child.end()
 
             self._safe("audit export", export_event)
 
     def complete(
         self, completion: TelemetryRunCompletion, content: TelemetryContent | None
     ) -> None:
+        if self._root_ended:
+            return
+
         def finish() -> None:
             metadata = {**self._base_metadata, **self._metadata(completion)}
             metadata.update(
@@ -138,20 +146,30 @@ class LangfuseTelemetryRun:
             if content is not None and content.final_response is not None:
                 update["output"] = {"final_response": content.final_response}
             self._root_observation.update(**update)
-            self._root_observation.end()
+            self._end_root()
             self._client.flush()
 
         self._safe("completion export", finish)
 
     def record_error(self, error_type: str, latency_ms: float) -> None:
+        if self._root_ended:
+            return
+
         def export_error() -> None:
             self._root_observation.update(
                 metadata={"status": "error", "error_type": error_type, "latency_ms": latency_ms}
             )
-            self._root_observation.end()
+            self._end_root()
             self._client.flush()
 
         self._safe("error export", export_error)
+
+    def _end_root(self) -> None:
+        """End the root at most once, even if callers report completion twice."""
+        if self._root_ended:
+            return
+        self._root_ended = True
+        self._root_observation.end()
 
 
 class LangfuseTelemetry:

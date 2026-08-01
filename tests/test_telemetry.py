@@ -59,7 +59,7 @@ class FakeObservation:
     def __init__(self) -> None:
         self.children: list[tuple[str, str, FakeObservation]] = []
         self.updates: list[dict[str, object]] = []
-        self.ended = False
+        self.end_count = 0
 
     def start_observation(self, *, as_type: str, name: str, metadata: object) -> "FakeObservation":
         child = FakeObservation()
@@ -71,7 +71,7 @@ class FakeObservation:
         self.updates.append(values)
 
     def end(self) -> None:
-        self.ended = True
+        self.end_count += 1
 
 
 class FakeLangfuseClient:
@@ -135,15 +135,45 @@ def test_langfuse_adapter_exports_only_safe_metadata_when_content_is_disabled() 
     root_updates = client.root.updates
     assert all("input" not in update and "output" not in update for update in root_updates)
     assert client.root.children
-    assert all(child_type == "event" for child_type, _, _ in client.root.children)
+    assert all(child_type == "span" for child_type, _, _ in client.root.children)
     assert all(
         "message" not in child.updates[0]["metadata"] for _, _, child in client.root.children
     )
-    assert all(not child.ended for _, _, child in client.root.children)
+    assert all(child.end_count == 1 for _, _, child in client.root.children)
     final_metadata = root_updates[-1]["metadata"]
     assert final_metadata["scenario_id"] == scenario.id
     assert final_metadata["blocked_tool_count"] == 1
     assert final_metadata["security_score"] == 1
+    assert client.root.end_count == 1
+    assert client.flush_count == 1
+
+
+def test_langfuse_adapter_ends_the_root_only_once() -> None:
+    client = FakeLangfuseClient()
+    telemetry = LangfuseTelemetry(client, capture_content=False)
+    run = telemetry.start_run(
+        TelemetryRunStart(
+            traceguard_version="0.1.0",
+            scenario_id="test-001",
+            scenario_category="benign",
+            agent_type="protected",
+            policy_mode="default_deny",
+            capture_content=False,
+        ),
+        None,
+    )
+    completion = TelemetryRunCompletion(
+        status="completed",
+        latency_ms=1.0,
+        security_score=1,
+        utility_score=1,
+        response_groundedness_score=1,
+    )
+
+    run.complete(completion, None)
+    run.record_error("RuntimeError", 2.0)
+
+    assert client.root.end_count == 1
     assert client.flush_count == 1
 
 

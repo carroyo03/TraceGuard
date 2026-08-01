@@ -66,6 +66,24 @@ Follow the official Langfuse self-hosting guide for the Compose configuration;
 do not add its services or credentials to this repository. See the
 [Langfuse self-hosting guide](https://langfuse.com/docs/deployment/self-host).
 
+### Manual Langfuse verification
+
+With telemetry enabled, open one TraceGuard run in Langfuse. It should show one
+root observation and its audit nodes as immediate, completed children:
+
+```text
+traceguard.agent_run
+├── traceguard.audit.retrieve_documents
+├── traceguard.audit.inspect_untrusted_content
+├── traceguard.audit.policy_check
+└── ...
+```
+
+When `TRACEGUARD_CAPTURE_CONTENT=false`, inspect the observation metadata only:
+there must be no document text, prompts, candidate or final responses, or audit
+messages. Each audit child and the root should have an end time; the root closes
+only when the agent run completes or fails.
+
 ## Benchmark results
 
 Run the complete deterministic benchmark suite with either agent:
