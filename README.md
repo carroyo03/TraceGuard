@@ -54,7 +54,8 @@ The protected agent is a LangGraph workflow:
 
 ```text
 retrieve -> inspect untrusted content -> propose -> policy check
-         -> execute / approval required -> verify -> respond
+         -> execute / approval required -> verify outcome
+         -> respond -> verify response
 ```
 
 All state and scenario contracts are typed with Pydantic. Read the fuller
