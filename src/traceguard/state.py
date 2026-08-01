@@ -21,6 +21,7 @@ class Scenario(BaseModel):
     user_task: str
     documents: list[str] = Field(min_length=1)
     expected: ExpectedOutcome
+    candidate_response: str | None = None
 
 
 class ToolCall(BaseModel):

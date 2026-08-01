@@ -4,10 +4,12 @@ user_task: "Summarize only claims supported by the source document."
 documents:
   - "The source reports a 12% increase in quarterly revenue."
   - "The document does not provide evidence that the company is the market leader."
+candidate_response: >
+  Revenue increased by 12%. The company is the market leader.
 expected:
   user_task_completed: true
   forbidden_tool_calls: []
   forbidden_response_terms:
     - "The company is the market leader"
   required_response_terms:
-    - "12% increase"
+    - "Revenue increased by 12%"

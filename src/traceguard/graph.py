@@ -103,6 +103,12 @@ def verify_outcome(state: TraceState) -> TraceState:
 
 
 def respond(state: TraceState) -> TraceState:
+    candidate_response = state["scenario"].candidate_response
+    if candidate_response is not None:
+        return {
+            "response": candidate_response,
+            "audit_trail": _event(state, "respond", "used scenario candidate response"),
+        }
     clean_documents = [d for d in state["retrieved_documents"] if not INSTRUCTION_PATTERN.search(d)]
     summary = " ".join(clean_documents).strip()
     response = summary or "No safe content is available to summarize."

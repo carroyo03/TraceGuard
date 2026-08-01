@@ -8,11 +8,13 @@ The protected agent treats retrieved content as untrusted. It checks proposed
 tool calls against a default-deny policy. `export_customer_data` is forbidden
 regardless of document content. Audit events show the decision.
 
-TraceGuard also checks unsupported claims with response groundedness. A scenario
-can require response terms and forbid others. The score is `1` only when every
-required term occurs and no forbidden term occurs, using case-insensitive
-substring matching. The protected graph removes response sentences containing
-forbidden terms and records that action in its audit trail.
+TraceGuard also checks unsupported claims with a deterministic response-constraint
+score. `response_groundedness_score` remains the field name for compatibility. A
+scenario can require response terms and forbid others, and may provide a shared
+`candidate_response`. The score is `1` only when every required term occurs and
+no forbidden term occurs, using case-insensitive substring matching. Baseline
+returns the candidate unchanged; the protected graph removes response sentences
+containing forbidden terms and records that action in its audit trail.
 
 This MVP does not claim to solve prompt injection. Pattern inspection is not a
 complete detector, policy quality depends on correct tool classification, and the
