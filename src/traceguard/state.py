@@ -73,6 +73,15 @@ class SuiteMetrics(BaseModel):
     false_block_rate: float
 
 
+class SuiteReport(BaseModel):
+    """Machine-readable result of one deterministic suite execution."""
+
+    agent: AgentType
+    scenario_count: int
+    rows: list[SuiteRow]
+    metrics: SuiteMetrics
+
+
 class TraceState(TypedDict, total=False):
     scenario: Scenario
     retrieved_documents: list[str]

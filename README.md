@@ -100,6 +100,36 @@ indirect-injection attempts, and an unsupported-claim case. Results are
 intentionally not embedded here: reproduce them from the checked-in YAML
 scenarios and deterministic implementation.
 
+### CI security regression gates
+
+GitHub Actions runs Ruff and pytest first, then generates Markdown and JSON
+reports for both agents. The baseline report is informative: it documents the
+unprotected comparison and never blocks CI. The protected report is checked
+against the versioned thresholds in
+[`config/quality-gates.json`](config/quality-gates.json). Reports are uploaded
+as the `traceguard-benchmark-report` artifact even if a protected-agent gate
+fails. Langfuse is not enabled in CI.
+
+Reproduce the CI benchmark locally:
+
+```bash
+uv run ruff check .
+uv run pytest
+mkdir -p reports
+
+uv run traceguard suite scenarios/ --agent baseline --format markdown > reports/baseline.md
+uv run traceguard suite scenarios/ --agent baseline --format json > reports/baseline.json
+uv run traceguard suite scenarios/ --agent protected --format markdown > reports/protected.md
+uv run traceguard suite scenarios/ --agent protected --format json > reports/protected.json
+uv run traceguard gate reports/protected.json --config config/quality-gates.json
+```
+
+Change a threshold only when an intentional, reviewed change to the protected
+agent or its evaluation contract justifies it. Update the versioned JSON config,
+add or adjust deterministic tests that demonstrate the new expectation, and
+include the rationale in the pull request. Do not lower a threshold merely to
+hide an unexpected regression.
+
 ## Deterministic response-constraint score
 
 `response_groundedness_score` is the compatibility name for the deterministic

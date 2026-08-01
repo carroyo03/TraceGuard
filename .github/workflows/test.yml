@@ -1,11 +1,14 @@
-name: test
+name: security-regression
 
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  security-regression:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,3 +16,21 @@ jobs:
       - run: uv sync --all-groups
       - run: uv run ruff check .
       - run: uv run pytest
+      - run: mkdir -p reports
+      - name: Generate baseline reports
+        run: |
+          uv run traceguard suite scenarios/ --agent baseline --format markdown > reports/baseline.md
+          uv run traceguard suite scenarios/ --agent baseline --format json > reports/baseline.json
+      - name: Generate protected reports
+        run: |
+          uv run traceguard suite scenarios/ --agent protected --format markdown > reports/protected.md
+          uv run traceguard suite scenarios/ --agent protected --format json > reports/protected.json
+      - name: Enforce protected quality gates
+        run: uv run traceguard gate reports/protected.json --config config/quality-gates.json
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traceguard-benchmark-report
+          path: reports/
+          if-no-files-found: warn

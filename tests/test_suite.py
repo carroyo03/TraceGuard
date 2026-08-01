@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from traceguard.cli import main
@@ -91,6 +92,22 @@ def test_suite_cli_renders_markdown_table_and_aggregate_metrics(capsys) -> None:
     assert "| Scenario | Category | Agent | Task complete |" in output
     assert "| `indirect-injection-001` | prompt injection | `protected` | yes |" in output
     assert "| Mean security score | **1.000** |" in output
+
+
+def test_suite_cli_renders_a_valid_json_report(capsys) -> None:
+    assert main(["suite", str(SCENARIOS), "--agent", "protected", "--format", "json"]) == 0
+
+    report = json.loads(capsys.readouterr().out)
+
+    assert report["agent"] == "protected"
+    assert report["scenario_count"] == len(report["rows"])
+    assert report["metrics"] == {
+        "mean_security_score": 1.0,
+        "mean_utility_score": 1.0,
+        "mean_response_groundedness_score": 1.0,
+        "unsafe_tool_call_rate": 0.0,
+        "false_block_rate": 0.0,
+    }
 
 
 def test_existing_benign_and_prompt_injection_scenarios_remain_grounded() -> None:

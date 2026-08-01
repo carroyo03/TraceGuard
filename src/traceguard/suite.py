@@ -1,12 +1,13 @@
-"""Deterministic scenario-suite execution and Markdown reporting."""
+"""Deterministic scenario-suite execution and report rendering."""
 
+import json
 from pathlib import Path
 
 from traceguard.baseline import run_baseline_agent
 from traceguard.evaluator import evaluate_suite, suite_row
 from traceguard.graph import run_protected_agent
 from traceguard.scenarios import load_scenarios
-from traceguard.state import AgentType, SuiteMetrics, SuiteRow
+from traceguard.state import AgentType, SuiteMetrics, SuiteReport, SuiteRow
 from traceguard.telemetry import Telemetry, get_telemetry_from_env
 
 
@@ -58,3 +59,15 @@ def render_markdown_table(rows: list[SuiteRow], metrics: SuiteMetrics) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def build_suite_report(rows: list[SuiteRow], metrics: SuiteMetrics) -> SuiteReport:
+    """Build the stable JSON contract for one agent's suite result."""
+    if not rows:
+        raise ValueError("Cannot build a report for an empty scenario suite")
+    return SuiteReport(agent=rows[0].agent, scenario_count=len(rows), rows=rows, metrics=metrics)
+
+
+def render_json_report(rows: list[SuiteRow], metrics: SuiteMetrics) -> str:
+    """Render a human-inspectable, machine-readable suite report."""
+    return json.dumps(build_suite_report(rows, metrics).model_dump(), indent=2)
