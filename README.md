@@ -21,6 +21,51 @@ The command prints the scenario and agent type, proposed and blocked calls,
 completion, security/utility scores, and a concise audit trail. Run with
 `--agent baseline` to see the intentional no-policy comparison.
 
+## Optional Langfuse observability
+
+Local execution is the default and does not require Langfuse, credentials, or a
+network connection. To add the optional SDK:
+
+```bash
+uv sync --extra langfuse
+export TRACEGUARD_LANGFUSE_ENABLED=true
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export LANGFUSE_BASE_URL="https://cloud.langfuse.com"
+uv run traceguard suite scenarios/ --agent protected
+```
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TRACEGUARD_LANGFUSE_ENABLED` | `false` | Enables the optional Langfuse adapter. |
+| `TRACEGUARD_CAPTURE_CONTENT` | `false` | Includes documents and responses only when explicitly enabled. |
+| `LANGFUSE_PUBLIC_KEY` | — | Required when Langfuse is enabled. |
+| `LANGFUSE_SECRET_KEY` | — | Required when Langfuse is enabled. |
+| `LANGFUSE_BASE_URL` | Langfuse Cloud | Optional Langfuse Cloud or self-hosted endpoint. |
+
+`TRACEGUARD_CAPTURE_CONTENT` defaults to `false`. In that mode, TraceGuard sends
+only scenario and agent identifiers, node names, tool names, policy decisions,
+scores, latency, and status metadata. It does not send documents, prompts,
+candidate responses, final responses, or tool arguments.
+
+Set `TRACEGUARD_CAPTURE_CONTENT=true` only for local development data that is
+safe to trace. Never send real, sensitive, customer, or credential-bearing data
+to Langfuse. If Langfuse is disabled, unavailable, or misconfigured, TraceGuard
+falls back to local no-op telemetry and continues running.
+
+For self-hosted development setups, configure `LANGFUSE_BASE_URL` to the URL of
+your Langfuse deployment. Docker Compose is documentation-only for this project:
+
+```bash
+# Run from a separate Langfuse deployment checkout, not this repository.
+docker compose up -d
+export LANGFUSE_BASE_URL="http://localhost:3000"
+```
+
+Follow the official Langfuse self-hosting guide for the Compose configuration;
+do not add its services or credentials to this repository. See the
+[Langfuse self-hosting guide](https://langfuse.com/docs/deployment/self-host).
+
 ## Benchmark results
 
 Run the complete deterministic benchmark suite with either agent:

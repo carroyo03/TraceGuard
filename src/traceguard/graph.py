@@ -1,11 +1,23 @@
 """LangGraph workflow for the deterministic protected document agent."""
 
 import re
+from time import perf_counter
 
 from langgraph.graph import END, START, StateGraph
 
+from traceguard.evaluator import evaluate
 from traceguard.policy import PolicyDecision, evaluate_tool_call
 from traceguard.state import AgentResult, AuditEvent, Scenario, ToolCall, TraceState
+from traceguard.telemetry import (
+    Telemetry,
+    elapsed_ms,
+    get_telemetry_from_env,
+    make_audit_events,
+    make_completion,
+    make_completion_content,
+    make_run_start,
+    make_start_content,
+)
 from traceguard.tools import execute_tool
 
 INSTRUCTION_PATTERN = re.compile(
@@ -183,18 +195,37 @@ def build_protected_graph():
     return graph.compile()
 
 
-def run_protected_agent(scenario: Scenario) -> AgentResult:
+def run_protected_agent(scenario: Scenario, telemetry: Telemetry | None = None) -> AgentResult:
     """Execute the protected graph and materialize its public result."""
-    state = build_protected_graph().invoke({"scenario": scenario, "audit_trail": []})
-    return AgentResult(
-        scenario_id=scenario.id,
-        agent_type="protected",
-        proposed_tool_calls=state.get("proposed_tool_calls", []),
-        executed_tool_calls=state.get("executed_tool_calls", []),
-        blocked_tool_calls=state.get("blocked_tool_calls", []),
-        approval_required_tool_calls=state.get("approval_required_tool_calls", []),
-        flagged_untrusted_instruction=state.get("flagged_untrusted_instruction", False),
-        user_task_completed=state.get("user_task_completed", False),
-        response=state.get("response", ""),
-        audit_trail=state.get("audit_trail", []),
+    telemetry_client = telemetry or get_telemetry_from_env()
+    telemetry_run = telemetry_client.start_run(
+        make_run_start(scenario, "protected", telemetry_client.capture_content),
+        make_start_content(scenario, telemetry_client.capture_content),
     )
+    started_at = perf_counter()
+    try:
+        state = build_protected_graph().invoke({"scenario": scenario, "audit_trail": []})
+        result = AgentResult(
+            scenario_id=scenario.id,
+            agent_type="protected",
+            proposed_tool_calls=state.get("proposed_tool_calls", []),
+            executed_tool_calls=state.get("executed_tool_calls", []),
+            blocked_tool_calls=state.get("blocked_tool_calls", []),
+            approval_required_tool_calls=state.get("approval_required_tool_calls", []),
+            flagged_untrusted_instruction=state.get("flagged_untrusted_instruction", False),
+            user_task_completed=state.get("user_task_completed", False),
+            response=state.get("response", ""),
+            audit_trail=state.get("audit_trail", []),
+        )
+        evaluation = evaluate(result, scenario)
+        telemetry_run.export_audit_events(
+            make_audit_events(result.audit_trail, telemetry_client.capture_content)
+        )
+        telemetry_run.complete(
+            make_completion(result, evaluation, elapsed_ms(started_at)),
+            make_completion_content(result, telemetry_client.capture_content),
+        )
+        return result
+    except Exception as error:
+        telemetry_run.record_error(type(error).__name__, elapsed_ms(started_at))
+        raise

@@ -7,13 +7,17 @@ from traceguard.evaluator import evaluate_suite, suite_row
 from traceguard.graph import run_protected_agent
 from traceguard.scenarios import load_scenarios
 from traceguard.state import AgentType, SuiteMetrics, SuiteRow
+from traceguard.telemetry import Telemetry, get_telemetry_from_env
 
 
-def run_suite(directory: str | Path, agent: AgentType) -> tuple[list[SuiteRow], SuiteMetrics]:
+def run_suite(
+    directory: str | Path, agent: AgentType, telemetry: Telemetry | None = None
+) -> tuple[list[SuiteRow], SuiteMetrics]:
     """Run every scenario with one selected agent and calculate aggregate metrics."""
     scenarios = load_scenarios(directory)
     runner = run_protected_agent if agent == "protected" else run_baseline_agent
-    runs = [(scenario, runner(scenario)) for scenario in scenarios]
+    telemetry_client = telemetry or get_telemetry_from_env()
+    runs = [(scenario, runner(scenario, telemetry_client)) for scenario in scenarios]
     return [suite_row(scenario, result) for scenario, result in runs], evaluate_suite(runs)
 
 

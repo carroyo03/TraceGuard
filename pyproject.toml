@@ -13,6 +13,9 @@ dependencies = [
 [project.scripts]
 traceguard = "traceguard.cli:main"
 
+[project.optional-dependencies]
+langfuse = ["langfuse>=4,<5"]
+
 [dependency-groups]
 dev = [
   "pytest>=8,<9",
