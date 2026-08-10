@@ -5,10 +5,11 @@ Provider-specific adapters will live behind ``create_provider`` in later PRs.
 """
 
 import json
+import math
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, cast, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from traceguard.state import ToolCall
 
@@ -29,7 +30,7 @@ class ToolDefinition(BaseModel):
 
     name: str
     description: str
-    parameters: dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class ModelRequest(BaseModel):
@@ -57,7 +58,7 @@ class ModelResponse(BaseModel):
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
     latency_ms: float = Field(ge=0)
-    provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    provider_metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class ProviderCapabilities(BaseModel):
@@ -233,7 +234,7 @@ def normalize_langchain_response(message: Any, *, latency_ms: float) -> ModelRes
         input_tokens=_usage_value(usage, "input_tokens", "prompt_tokens"),
         output_tokens=_usage_value(usage, "output_tokens", "completion_tokens"),
         latency_ms=latency_ms,
-        provider_metadata=dict(metadata) if isinstance(metadata, Mapping) else {},
+        provider_metadata=_normalize_provider_metadata(metadata),
     )
 
 
@@ -277,13 +278,16 @@ def _normalize_content(content: Any) -> str:
 
 
 def _normalize_tool_call(call: Any) -> ToolCall:
+    call_id = _message_value(call, "id")
     name = _message_value(call, "name")
     arguments = _message_value(call, "args", "arguments") or {}
     if isinstance(arguments, str):
         arguments = json.loads(arguments)
     if not isinstance(name, str) or not isinstance(arguments, Mapping):
         raise ValueError("LangChain tool call must contain a name and object arguments")
-    return ToolCall(name=name, arguments=dict(arguments))
+    if call_id is not None and not isinstance(call_id, str):
+        raise ValueError("LangChain tool call id must be a string when present")
+    return ToolCall(id=call_id, name=name, arguments=dict(arguments))
 
 
 def _usage_value(usage: Any, *names: str) -> int | None:
@@ -294,3 +298,46 @@ def _usage_value(usage: Any, *names: str) -> int | None:
         if isinstance(value, int) and value >= 0:
             return value
     return None
+
+
+_OMIT_JSON_VALUE = object()
+
+
+def _normalize_provider_metadata(metadata: Any) -> dict[str, JsonValue]:
+    """Keep only JSON-safe provider metadata at the external SDK boundary."""
+    if not isinstance(metadata, Mapping):
+        return {}
+    normalized: dict[str, JsonValue] = {}
+    for key, value in metadata.items():
+        if not isinstance(key, str):
+            continue
+        json_value = _to_json_value(value)
+        if json_value is not _OMIT_JSON_VALUE:
+            normalized[key] = cast(JsonValue, json_value)
+    return normalized
+
+
+def _to_json_value(value: Any) -> JsonValue | object:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else _OMIT_JSON_VALUE
+    if isinstance(value, Mapping):
+        normalized: dict[str, JsonValue] = {}
+        for key, nested_value in value.items():
+            if not isinstance(key, str):
+                return _OMIT_JSON_VALUE
+            json_value = _to_json_value(nested_value)
+            if json_value is _OMIT_JSON_VALUE:
+                return _OMIT_JSON_VALUE
+            normalized[key] = cast(JsonValue, json_value)
+        return normalized
+    if isinstance(value, list):
+        normalized_list: list[JsonValue] = []
+        for nested_value in value:
+            json_value = _to_json_value(nested_value)
+            if json_value is _OMIT_JSON_VALUE:
+                return _OMIT_JSON_VALUE
+            normalized_list.append(cast(JsonValue, json_value))
+        return normalized_list
+    return _OMIT_JSON_VALUE

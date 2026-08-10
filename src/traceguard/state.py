@@ -1,8 +1,8 @@
 """Typed state and domain models for deterministic agent runs."""
 
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 AgentType = Literal["baseline", "protected"]
 
@@ -25,8 +25,9 @@ class Scenario(BaseModel):
 
 
 class ToolCall(BaseModel):
+    id: str | None = None
     name: str
-    arguments: dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class AuditEvent(BaseModel):

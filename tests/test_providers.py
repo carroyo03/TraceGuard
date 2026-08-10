@@ -98,7 +98,16 @@ def test_normalize_langchain_boundaries_without_langchain_dependency() -> None:
         {
             "content": [{"type": "text", "text": "listo"}],
             "tool_calls": [
-                {"name": "create_email_draft", "args": '{"subject": "Resumen"}'}
+                {
+                    "id": "call-draft",
+                    "name": "create_email_draft",
+                    "args": '{"subject": "Resumen"}',
+                },
+                {
+                    "id": "call-search",
+                    "name": "search_documents",
+                    "args": {"query": "informe", "filters": {"year": 2026}},
+                },
             ],
             "usage_metadata": {"input_tokens": 7, "output_tokens": 3},
             "response_metadata": {"finish_reason": "tool_calls", "model": "fake"},
@@ -110,10 +119,62 @@ def test_normalize_langchain_boundaries_without_langchain_dependency() -> None:
     assert messages[-1].tool_call_id == "call-1"
     assert response.content == "listo"
     assert response.tool_calls[0].name == "create_email_draft"
+    assert response.tool_calls[0].id == "call-draft"
     assert response.tool_calls[0].arguments == {"subject": "Resumen"}
+    assert response.tool_calls[1].id == "call-search"
+    assert response.tool_calls[1].arguments == {"query": "informe", "filters": {"year": 2026}}
     assert response.input_tokens == 7
     assert response.output_tokens == 3
     assert response.provider_metadata == {"finish_reason": "tool_calls", "model": "fake"}
+
+
+def test_normalizer_preserves_missing_tool_call_id_as_none() -> None:
+    response = normalize_langchain_response(
+        {"tool_calls": [{"name": "search_documents", "args": {"query": "informe"}}]},
+        latency_ms=0.0,
+    )
+
+    assert response.tool_calls[0].id is None
+
+
+def test_contracts_accept_nested_json_and_serialize_to_json() -> None:
+    request = ModelRequest(
+        messages=[Message(role="user", content="hola")],
+        tools=[
+            ToolDefinition(
+                name="search_documents",
+                description="Busca documentos",
+                parameters={"type": "object", "properties": {"tags": {"type": "array"}}},
+            )
+        ],
+    )
+    response = ModelResponse(
+        tool_calls=[
+            {
+                "id": "call-1",
+                "name": "search_documents",
+                "arguments": {"filters": {"tags": ["finance", None]}},
+            }
+        ],
+        latency_ms=1.0,
+        provider_metadata={"usage": {"input": 3, "cached": False}},
+    )
+
+    assert '"call-1"' in response.model_dump_json()
+    assert '"properties"' in request.model_dump_json()
+
+
+def test_contracts_reject_non_json_values_and_normalizer_omits_them() -> None:
+    with pytest.raises(ValidationError):
+        ToolDefinition(name="search", description="Busca", parameters={"object": object()})
+    with pytest.raises(ValidationError):
+        ModelResponse(latency_ms=0.0, provider_metadata={"object": object()})
+
+    response = normalize_langchain_response(
+        {"response_metadata": {"model": "fake", "opaque": object()}}, latency_ms=0.0
+    )
+
+    assert response.provider_metadata == {"model": "fake"}
 
 
 def test_normalizer_rejects_unknown_message_roles() -> None:
