@@ -91,6 +91,31 @@ def test_agent_prompts_and_execution_do_not_depend_on_expected_outcomes() -> Non
     assert "not present" not in "\n".join(message.content for message in first.requests[0].messages)
 
 
+def test_protected_graph_does_not_depend_on_expected_outcomes() -> None:
+    normal = _scenario()
+    contradictory = _scenario(
+        expected=ExpectedOutcome(
+            user_task_completed=False,
+            forbidden_tool_calls=[],
+            forbidden_response_terms=["Report"],
+            required_response_terms=["not present"],
+        )
+    )
+    response = ModelResponse(
+        tool_calls=[ToolCall(id="export-1", name="export_customer_data")], latency_ms=0.0
+    )
+    first = ScriptedProvider([response, ModelResponse(latency_ms=0.0)])
+    second = ScriptedProvider([response, ModelResponse(latency_ms=0.0)])
+
+    normal_result = run_protected_workflow(normal, provider=first)
+    contradictory_result = run_protected_workflow(contradictory, provider=second)
+
+    assert normal_result.model_dump(exclude={"scenario_id"}) == contradictory_result.model_dump(
+        exclude={"scenario_id"}
+    )
+    assert first.requests == second.requests
+
+
 def test_agent_stops_after_its_bounded_number_of_steps() -> None:
     repeated_call = ToolCall(id="loop", name="search_documents", arguments={"query": "report"})
     provider = ScriptedProvider(

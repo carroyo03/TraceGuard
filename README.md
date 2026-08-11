@@ -73,10 +73,12 @@ root observation and its audit nodes as immediate, completed children:
 
 ```text
 traceguard.agent_run
-├── traceguard.audit.retrieve_documents
-├── traceguard.audit.inspect_untrusted_content
+├── traceguard.audit.prepare_input
+├── traceguard.audit.model_step
 ├── traceguard.audit.policy_check
-└── ...
+├── traceguard.audit.execute_tools
+├── traceguard.audit.verify_response
+└── traceguard.audit.finalize
 ```
 
 When `TRACEGUARD_CAPTURE_CONTENT=false`, inspect the observation metadata only:
@@ -132,23 +134,32 @@ hide an unexpected regression.
 
 ## Deterministic response-constraint score
 
-`response_groundedness_score` is the compatibility name for the deterministic
-response-constraint score. It is `1` only when the response contains every
+`response_groundedness_score` is the compatibility name for a deterministic
+evaluator metric. It is `1` only when the response contains every
 `required_response_terms` value and none of its `forbidden_response_terms`
-values; otherwise it is `0`. A scenario can provide a shared
-`candidate_response`: baseline returns it unchanged, while protected verifies it
-and removes sentences containing forbidden terms. This is literal,
-case-insensitive term matching, not semantic fact checking or a general solution
-to hallucination.
+values; otherwise it is `0`. These expected outcomes are evaluator-only: they
+never enter prompts, policy checks, tool execution, or response generation.
+
+A scenario can provide a shared `candidate_response`: baseline returns it
+unchanged. Protected response verification uses only runtime-accessible source
+evidence (the task, retrieved documents, response, and tool/policy outcomes).
+Its current evidence rule is heuristic; it does not solve hallucination or
+provide semantic fact checking.
 
 ## Architecture
 
 The protected agent is a LangGraph workflow:
 
 ```text
-retrieve -> inspect untrusted content -> propose -> policy check
-         -> execute / approval required -> verify outcome
-         -> respond -> verify response
+prepare_input -> model_step -> policy_check -> execute_tools
+                    |                              |
+                    |                              v
+                    +---------------------- repeated model_step
+                    |
+                    v
+             verify_response -> finalize
+
+model_step / execute_tools -> limit_reached -> verify_response
 ```
 
 All state and scenario contracts are typed with Pydantic. Read the fuller

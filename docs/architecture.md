@@ -7,15 +7,27 @@ protected LangGraph workflow.
 The protected workflow is:
 
 ```text
-retrieve_documents -> inspect_untrusted_content -> propose_action
-    -> policy_check -> execute_tool / approval_required / blocked
-    -> verify_outcome -> respond
+prepare_input -> model_step -> policy_check -> execute_tools
+                    |                              |
+                    |                              v
+                    +---------------------- repeated model_step
+                    |
+                    v
+             verify_response -> finalize
+
+model_step / execute_tools -> limit_reached -> verify_response
 ```
 
-Retrieved documents are treated as untrusted data. The proposal component follows
-embedded tool instructions so the test can show the effect of the policy layer.
-The policy is default-deny: only a small allow-list of local simulated tools can
-run.
+The compiled LangGraph has explicit `prepare_input`, `model_step`,
+`policy_check`, `execute_tools`, `verify_response`, `finalize`, and
+`limit_reached` nodes. Retrieved documents are treated as untrusted data. The
+policy is default-deny: only a small allow-list of local simulated tools can run.
+
+`Scenario.expected` is intentionally excluded from the runtime graph state. It
+is read only by the evaluator after a run. The protected response verifier uses
+the user task, retrieved documents, candidate response, and tool/policy results;
+its evidence matching is heuristic rather than a general hallucination or
+semantic fact-checking solution.
 
 Every node appends structured audit events to the state. Evaluation happens after
 the run and reports separate security and utility scores.
