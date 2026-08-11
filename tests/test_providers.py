@@ -217,6 +217,22 @@ def test_ollama_preflight_reports_missing_model_and_connection_errors() -> None:
     assert unavailable.preflight().connectivity is False
 
 
+def test_ollama_preflight_preserves_safe_missing_extra_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        provider_module,
+        "_load_chat_ollama",
+        lambda: (_ for _ in ()).throw(ProviderUnavailableError("internal traceback")),
+    )
+    provider = OllamaLocalProvider("qwen3:8b", model_lister=lambda *_: {"qwen3:8b"})
+
+    result = provider.preflight(require_tool_calling=True)
+
+    assert result.detail == "Ollama local requires `uv sync --extra ollama`."
+    assert "traceback" not in result.detail
+
+
 def test_ollama_message_conversion_generates_a_backend_id_only_when_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

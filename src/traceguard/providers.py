@@ -19,6 +19,7 @@ from traceguard.state import ToolCall
 
 ProviderName = Literal["deterministic", "ollama-local", "ollama-cloud", "nvidia-nim"]
 MessageRole = Literal["system", "user", "assistant", "tool"]
+OLLAMA_EXTRA_INSTALL_MESSAGE = "Ollama local requires `uv sync --extra ollama`."
 
 
 class Message(BaseModel):
@@ -274,6 +275,10 @@ class OllamaLocalProvider:
         )
         try:
             response = self.invoke(probe)
+        except ProviderUnavailableError:
+            return _ollama_preflight_result(
+                self, True, True, False, OLLAMA_EXTRA_INSTALL_MESSAGE
+            )
         except Exception as error:
             return _ollama_preflight_result(
                 self, True, True, False, f"tool-calling probe failed: {type(error).__name__}"
@@ -353,9 +358,7 @@ def _load_chat_ollama() -> Callable[..., Any]:
     try:
         from langchain_ollama import ChatOllama
     except ImportError as error:
-        raise ProviderUnavailableError(
-            "Ollama local requires `uv sync --extra ollama`."
-        ) from error
+        raise ProviderUnavailableError(OLLAMA_EXTRA_INSTALL_MESSAGE) from error
     return ChatOllama
 
 
@@ -363,9 +366,7 @@ def _load_langchain_message_types() -> dict[str, Callable[..., Any]]:
     try:
         from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
     except ImportError as error:
-        raise ProviderUnavailableError(
-            "Ollama local requires `uv sync --extra ollama`."
-        ) from error
+        raise ProviderUnavailableError(OLLAMA_EXTRA_INSTALL_MESSAGE) from error
     return {"ai": AIMessage, "human": HumanMessage, "system": SystemMessage, "tool": ToolMessage}
 
 
