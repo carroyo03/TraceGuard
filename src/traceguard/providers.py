@@ -6,8 +6,12 @@ Provider-specific adapters will live behind ``create_provider`` in later PRs.
 
 import json
 import math
+import os
 from collections.abc import Callable, Mapping, Sequence
+from time import perf_counter
 from typing import Any, Literal, Protocol, cast, runtime_checkable
+from urllib.error import URLError
+from urllib.request import urlopen
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -93,6 +97,10 @@ class ProviderConfiguration(BaseModel):
 
 class ProviderUnavailableError(RuntimeError):
     """Raised when a planned optional provider adapter is not installed yet."""
+
+
+class ProviderPreflightError(RuntimeError):
+    """Raised when a provider cannot satisfy a required preflight condition."""
 
 
 @runtime_checkable
@@ -185,16 +193,15 @@ def _preflight_result(
 def create_provider(configuration: ProviderConfiguration) -> ModelProvider:
     """Create an adapter without importing optional provider SDKs eagerly.
 
-    Only the deterministic adapter exists in PR 1.  The explicit errors preserve
-    the public factory shape while ensuring no SDK or network behaviour leaks
-    into the deterministic installation.
+    Optional adapters are imported only when their concrete provider is used,
+    so the deterministic installation has no SDK or network behaviour.
     """
 
     if configuration.provider == "deterministic":
         return DeterministicProvider(model=configuration.model)
     if configuration.provider == "ollama-local":
-        raise ProviderUnavailableError(
-            "The Ollama local adapter is planned for PR 3 and is not installed in this release."
+        return OllamaLocalProvider(
+            model=configuration.model, timeout_seconds=configuration.timeout_seconds
         )
     if configuration.provider == "ollama-cloud":
         raise ProviderUnavailableError(
@@ -202,6 +209,196 @@ def create_provider(configuration: ProviderConfiguration) -> ModelProvider:
         )
     raise ProviderUnavailableError(
         "The NVIDIA NIM adapter is planned for PR 5 and is not installed in this release."
+    )
+
+
+class OllamaLocalProvider:
+    """Local Ollama adapter implemented with LangChain's ``ChatOllama``."""
+
+    name: ProviderName = "ollama-local"
+    capabilities = ProviderCapabilities(
+        tool_calling=True, structured_output=True, token_usage=True, seed=True
+    )
+
+    def __init__(
+        self,
+        model: str,
+        *,
+        host: str | None = None,
+        timeout_seconds: float = 60.0,
+        chat_factory: Callable[..., Any] | None = None,
+        model_lister: Callable[[str, float], set[str]] | None = None,
+    ) -> None:
+        self.model = model
+        self.host = (
+            host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434"
+        ).rstrip("/")
+        self.timeout_seconds = timeout_seconds
+        self._chat_factory = chat_factory
+        self._model_lister = model_lister or _ollama_model_names
+
+    def invoke(self, request: ModelRequest) -> ModelResponse:
+        chat = self._create_chat(request)
+        bound_chat = chat.bind_tools(to_langchain_tools(request.tools)) if request.tools else chat
+        started_at = perf_counter()
+        response = bound_chat.invoke(to_langchain_messages(request.messages))
+        latency_ms = (perf_counter() - started_at) * 1000
+        return normalize_langchain_response(response, latency_ms=latency_ms)
+
+    def preflight(self, *, require_tool_calling: bool = False) -> ProviderPreflightResult:
+        try:
+            models = self._model_lister(self.host, self.timeout_seconds)
+        except (OSError, URLError, ValueError, ProviderPreflightError):
+            return _ollama_preflight_result(
+                self, False, False, False, "cannot list local Ollama models"
+            )
+        if self.model not in models:
+            return _ollama_preflight_result(
+                self, True, False, False, f"model {self.model!r} is not available locally"
+            )
+        probe = ModelRequest(
+            messages=[
+                Message(
+                    role="user", content="Call the probe_tool now. Do not answer in prose."
+                )
+            ],
+            tools=[
+                ToolDefinition(
+                    name="probe_tool",
+                    description="Preflight tool-calling probe.",
+                    parameters={"type": "object", "properties": {}},
+                )
+            ],
+            temperature=0.0,
+            max_output_tokens=32,
+        )
+        try:
+            response = self.invoke(probe)
+        except Exception as error:
+            return _ollama_preflight_result(
+                self, True, True, False, f"tool-calling probe failed: {type(error).__name__}"
+            )
+        verified = any(call.name == "probe_tool" for call in response.tool_calls)
+        detail = None if verified else "model did not return the required probe tool call"
+        return _ollama_preflight_result(self, True, True, verified, detail)
+
+    def _create_chat(self, request: ModelRequest) -> Any:
+        factory = self._chat_factory or _load_chat_ollama()
+        arguments: dict[str, Any] = {
+            "model": self.model,
+            "base_url": self.host,
+            "temperature": request.temperature,
+            "num_predict": request.max_output_tokens,
+        }
+        if request.seed is not None:
+            arguments["seed"] = request.seed
+        return factory(**arguments)
+
+
+def to_langchain_tools(tools: Sequence[ToolDefinition]) -> list[dict[str, JsonValue]]:
+    """Convert neutral tool definitions to LangChain/OpenAI function schemas."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters or {"type": "object", "properties": {}},
+            },
+        }
+        for tool in tools
+    ]
+
+
+def to_langchain_messages(messages: Sequence[Message]) -> list[Any]:
+    """Convert neutral conversation messages while preserving tool-call identity."""
+    message_types = _load_langchain_message_types()
+    converted: list[Any] = []
+    pending_tool_call_ids: list[str] = []
+    generated_id = 0
+    for message in messages:
+        if message.role == "system":
+            converted.append(message_types["system"](content=message.content))
+        elif message.role == "user":
+            converted.append(message_types["human"](content=message.content))
+        elif message.role == "assistant":
+            tool_calls = []
+            for call in message.tool_calls:
+                call_id = call.id or f"traceguard-tool-call-{generated_id}"
+                generated_id += 1
+                pending_tool_call_ids.append(call_id)
+                tool_calls.append({"id": call_id, "name": call.name, "args": call.arguments})
+            converted.append(
+                message_types["ai"](
+                    content=message.content,
+                    tool_calls=tool_calls,
+                )
+            )
+        else:
+            tool_call_id = message.tool_call_id
+            if tool_call_id is None:
+                if not pending_tool_call_ids:
+                    raise ValueError("tool message has no preceding tool call")
+                tool_call_id = pending_tool_call_ids.pop(0)
+            elif tool_call_id in pending_tool_call_ids:
+                pending_tool_call_ids.remove(tool_call_id)
+            converted.append(
+                message_types["tool"](content=message.content, tool_call_id=tool_call_id)
+            )
+    return converted
+
+
+def _load_chat_ollama() -> Callable[..., Any]:
+    try:
+        from langchain_ollama import ChatOllama
+    except ImportError as error:
+        raise ProviderUnavailableError(
+            "Ollama local requires `uv sync --extra ollama`."
+        ) from error
+    return ChatOllama
+
+
+def _load_langchain_message_types() -> dict[str, Callable[..., Any]]:
+    try:
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+    except ImportError as error:
+        raise ProviderUnavailableError(
+            "Ollama local requires `uv sync --extra ollama`."
+        ) from error
+    return {"ai": AIMessage, "human": HumanMessage, "system": SystemMessage, "tool": ToolMessage}
+
+
+def _ollama_model_names(host: str, timeout_seconds: float) -> set[str]:
+    try:
+        with urlopen(f"{host}/api/tags", timeout=timeout_seconds) as response:  # noqa: S310
+            payload = json.loads(response.read())
+    except (OSError, URLError, json.JSONDecodeError) as error:
+        raise ProviderPreflightError("cannot connect to local Ollama") from error
+    models = payload.get("models") if isinstance(payload, Mapping) else None
+    if not isinstance(models, list):
+        raise ProviderPreflightError("Ollama /api/tags returned an invalid model list")
+    return {
+        item["name"]
+        for item in models
+        if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+    }
+
+
+def _ollama_preflight_result(
+    provider: OllamaLocalProvider,
+    connectivity: bool,
+    model_available: bool,
+    tool_calling_verified: bool,
+    detail: str | None,
+) -> ProviderPreflightResult:
+    return ProviderPreflightResult(
+        provider=provider.name,
+        model=provider.model,
+        connectivity=connectivity,
+        model_available=model_available,
+        capabilities=provider.capabilities,
+        tool_calling_verified=tool_calling_verified,
+        detail=detail,
     )
 
 

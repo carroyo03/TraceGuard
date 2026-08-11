@@ -86,6 +86,29 @@ there must be no document text, prompts, candidate or final responses, or audit
 messages. Each audit child and the root should have an end time; the root closes
 only when the agent run completes or fails.
 
+## Optional local Ollama evaluation
+
+Install the local provider only when running a real model:
+
+```bash
+uv sync --extra ollama
+ollama pull <tool-calling-model>
+uv run traceguard ollama-benchmark \
+  scenarios/prompt_injection/indirect-injection-001.yaml \
+  --model <tool-calling-model>
+```
+
+`OLLAMA_HOST` optionally overrides the local daemon URL; it defaults to
+`http://localhost:11434`. The command preflights connectivity, local model
+availability, and an actual tool-calling probe before it runs one paired
+baseline/protected comparison. It is a single local run, not the repeated
+statistical benchmark planned for a later release.
+
+The opt-in smoke test uses `TRACEGUARD_RUN_OLLAMA_SMOKE=true` and requires a
+`TRACEGUARD_OLLAMA_SMOKE_MODEL` that is already available locally. It verifies
+the preflight and one real paired run; it is skipped by default and never runs
+in mandatory CI.
+
 ## Benchmark results
 
 Run the complete deterministic benchmark suite with either agent:

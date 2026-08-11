@@ -4,9 +4,11 @@ import argparse
 import json
 from collections.abc import Sequence
 
+from traceguard.agent import run_paired_first_action
 from traceguard.baseline import run_baseline_agent
 from traceguard.evaluator import evaluate
 from traceguard.graph import run_protected_agent
+from traceguard.providers import ProviderConfiguration, create_provider
 from traceguard.quality_gate import (
     evaluate_quality_gate,
     load_quality_gate_config,
@@ -32,6 +34,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     gate_parser.add_argument(
         "--config", required=True, help="path to a versioned quality-gate config"
     )
+    ollama_benchmark_parser = subparsers.add_parser(
+        "ollama-benchmark", help="run one paired local Ollama comparison"
+    )
+    ollama_benchmark_parser.add_argument("scenario", help="path to one YAML scenario")
+    ollama_benchmark_parser.add_argument("--model", required=True, help="local Ollama model name")
+    ollama_benchmark_parser.add_argument(
+        "--timeout", type=float, default=60.0, help="per-request timeout in seconds"
+    )
     args = parser.parse_args(argv)
 
     if args.command == "suite":
@@ -46,6 +56,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print(render_quality_gate_result(result))
         return int(not result.passed)
+
+    if args.command == "ollama-benchmark":
+        provider = create_provider(
+            ProviderConfiguration(
+                provider="ollama-local", model=args.model, timeout_seconds=args.timeout
+            )
+        )
+        preflight = provider.preflight(require_tool_calling=True)
+        if not (
+            preflight.connectivity
+            and preflight.model_available
+            and preflight.tool_calling_verified
+        ):
+            print(json.dumps({"preflight": preflight.model_dump()}, ensure_ascii=False, indent=2))
+            return 2
+        scenario = load_scenario(args.scenario)
+        baseline, protected = run_paired_first_action(scenario, provider)
+        print(
+            json.dumps(
+                {
+                    "preflight": preflight.model_dump(),
+                    "baseline": {
+                        "result": baseline.model_dump(),
+                        "evaluation": evaluate(baseline, scenario).model_dump(),
+                    },
+                    "protected": {
+                        "result": protected.model_dump(),
+                        "evaluation": evaluate(protected, scenario).model_dump(),
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
 
     scenario = load_scenario(args.scenario)
     result = (

@@ -1,11 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
+import traceguard.providers as provider_module
 from traceguard.providers import (
     DeterministicProvider,
     Message,
     ModelRequest,
     ModelResponse,
+    OllamaLocalProvider,
     ProviderCapabilities,
     ProviderConfiguration,
     ProviderUnavailableError,
@@ -14,7 +16,9 @@ from traceguard.providers import (
     create_provider,
     normalize_langchain_messages,
     normalize_langchain_response,
+    to_langchain_messages,
 )
+from traceguard.state import ToolCall
 
 
 def test_deterministic_provider_uses_provider_neutral_contract() -> None:
@@ -71,7 +75,7 @@ def test_scripted_provider_records_requests_and_propagates_scripted_errors() -> 
     assert provider.requests == [request, request]
 
 
-@pytest.mark.parametrize("provider", ["ollama-local", "ollama-cloud", "nvidia-nim"])
+@pytest.mark.parametrize("provider", ["ollama-cloud", "nvidia-nim"])
 def test_planned_provider_factory_paths_do_not_import_or_install_sdks(provider: str) -> None:
     with pytest.raises(ProviderUnavailableError):
         create_provider(ProviderConfiguration(provider=provider, model="example"))  # type: ignore[arg-type]
@@ -84,6 +88,157 @@ def test_factory_builds_the_deterministic_provider() -> None:
 
     assert isinstance(provider, DeterministicProvider)
     assert provider.model == "test-deterministic"
+
+
+def test_factory_builds_the_local_ollama_provider_without_importing_its_sdk() -> None:
+    provider = create_provider(
+        ProviderConfiguration(provider="ollama-local", model="qwen3:8b")
+    )
+
+    assert isinstance(provider, OllamaLocalProvider)
+    assert provider.model == "qwen3:8b"
+
+
+def test_ollama_provider_converts_messages_tools_and_max_output_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeChat:
+        def bind_tools(self, tools: object) -> "FakeChat":
+            captured["tools"] = tools
+            return self
+
+        def invoke(self, messages: object) -> dict[str, object]:
+            captured["messages"] = messages
+            return {
+                "content": "drafted",
+                "tool_calls": [
+                    {"id": "call-1", "name": "create_email_draft", "args": {"subject": "Hi"}}
+                ],
+                "usage_metadata": {"input_tokens": 3, "output_tokens": 2},
+            }
+
+    def factory(**kwargs: object) -> FakeChat:
+        captured["chat_kwargs"] = kwargs
+        return FakeChat()
+
+    class FakeMessage:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(
+        provider_module,
+        "_load_langchain_message_types",
+        lambda: {
+            "ai": FakeMessage,
+            "human": FakeMessage,
+            "system": FakeMessage,
+            "tool": FakeMessage,
+        },
+    )
+    provider = OllamaLocalProvider(
+        "qwen3:8b",
+        host="http://ollama.test",
+        chat_factory=factory,
+        model_lister=lambda *_: {"qwen3:8b"},
+    )
+    response = provider.invoke(
+        ModelRequest(
+            messages=[
+                Message(
+                    role="assistant",
+                    content="",
+                    tool_calls=[ToolCall(id="old", name="search_documents")],
+                ),
+                Message(role="tool", content="{}", tool_call_id="old"),
+            ],
+            tools=[
+                ToolDefinition(
+                    name="create_email_draft",
+                    description="Draft an email.",
+                    parameters={"type": "object", "properties": {}},
+                )
+            ],
+            temperature=0.3,
+            max_output_tokens=77,
+            seed=9,
+        )
+    )
+
+    assert captured["chat_kwargs"] == {
+        "model": "qwen3:8b",
+        "base_url": "http://ollama.test",
+        "temperature": 0.3,
+        "num_predict": 77,
+        "seed": 9,
+    }
+    assert response.tool_calls == [
+        ToolCall(id="call-1", name="create_email_draft", arguments={"subject": "Hi"})
+    ]
+    messages = captured["messages"]
+    assert isinstance(messages, list)
+    assert messages[0].kwargs["tool_calls"] == [
+        {"id": "old", "name": "search_documents", "args": {}}
+    ]
+    assert messages[1].kwargs["tool_call_id"] == "old"
+
+
+def test_ollama_preflight_requires_connectivity_model_and_a_real_tool_call() -> None:
+    class FakeChat:
+        def bind_tools(self, _: object) -> "FakeChat":
+            return self
+
+        def invoke(self, _: object) -> dict[str, object]:
+            return {"tool_calls": [{"id": "probe", "name": "probe_tool", "args": {}}]}
+
+    provider = OllamaLocalProvider(
+        "qwen3:8b", chat_factory=lambda **_: FakeChat(), model_lister=lambda *_: {"qwen3:8b"}
+    )
+    result = provider.preflight(require_tool_calling=True)
+
+    assert result.connectivity is True
+    assert result.model_available is True
+    assert result.tool_calling_verified is True
+
+
+def test_ollama_preflight_reports_missing_model_and_connection_errors() -> None:
+    missing = OllamaLocalProvider("qwen3:8b", model_lister=lambda *_: set())
+    unavailable = OllamaLocalProvider(
+        "qwen3:8b", model_lister=lambda *_: (_ for _ in ()).throw(OSError("offline"))
+    )
+
+    assert missing.preflight().model_available is False
+    assert unavailable.preflight().connectivity is False
+
+
+def test_ollama_message_conversion_generates_a_backend_id_only_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeMessage:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(
+        provider_module,
+        "_load_langchain_message_types",
+        lambda: {
+            "ai": FakeMessage,
+            "human": FakeMessage,
+            "system": FakeMessage,
+            "tool": FakeMessage,
+        },
+    )
+
+    messages = to_langchain_messages(
+        [
+            Message(role="assistant", tool_calls=[ToolCall(name="search_documents")]),
+            Message(role="tool", content="{}"),
+        ]
+    )
+
+    assert messages[0].kwargs["tool_calls"][0]["id"] == "traceguard-tool-call-0"
+    assert messages[1].kwargs["tool_call_id"] == "traceguard-tool-call-0"
 
 
 def test_normalize_langchain_boundaries_without_langchain_dependency() -> None:

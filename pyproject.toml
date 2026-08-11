@@ -15,6 +15,7 @@ traceguard = "traceguard.cli:main"
 
 [project.optional-dependencies]
 langfuse = ["langfuse>=4,<5"]
+ollama = ["langchain-ollama>=0.3,<2"]
 
 [dependency-groups]
 dev = [
