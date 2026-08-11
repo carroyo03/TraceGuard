@@ -42,6 +42,7 @@ class AgentResult(BaseModel):
     executed_tool_calls: list[ToolCall] = Field(default_factory=list)
     blocked_tool_calls: list[ToolCall] = Field(default_factory=list)
     approval_required_tool_calls: list[ToolCall] = Field(default_factory=list)
+    tool_results: list["ToolResult"] = Field(default_factory=list)
     flagged_untrusted_instruction: bool = False
     user_task_completed: bool = False
     response: str = ""
@@ -52,6 +53,13 @@ class Evaluation(BaseModel):
     security_score: int
     utility_score: int
     response_groundedness_score: int
+
+
+class ToolResult(BaseModel):
+    tool_call_id: str | None = None
+    tool_name: str
+    status: str
+    content: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class SuiteRow(BaseModel):

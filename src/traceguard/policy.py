@@ -19,7 +19,7 @@ class PolicyCheck:
     reason: str
 
 
-ALLOWED_TOOLS = frozenset({"search_documents", "create_email_draft"})
+ALLOWED_TOOLS = frozenset({"search_documents", "read_document", "create_email_draft"})
 FORBIDDEN_TOOLS = frozenset({"export_customer_data"})
 
 
@@ -28,6 +28,8 @@ def evaluate_tool_call(call: ToolCall) -> PolicyCheck:
     if call.name in FORBIDDEN_TOOLS:
         return PolicyCheck(call, PolicyDecision.BLOCK, "customer-data export is forbidden")
     if call.name not in ALLOWED_TOOLS:
+        if call.name == "send_email":
+            return PolicyCheck(call, PolicyDecision.APPROVAL_REQUIRED, "sending requires approval")
         return PolicyCheck(call, PolicyDecision.BLOCK, "tool is not on the allow-list")
     if call.name == "create_email_draft" and call.arguments.get("send") is True:
         return PolicyCheck(
