@@ -5,6 +5,15 @@ from typing import Literal, TypedDict
 from pydantic import BaseModel, Field, JsonValue
 
 AgentType = Literal["baseline", "protected"]
+ToolResultStatus = Literal[
+    "completed",
+    "not_found",
+    "simulated_sent",
+    "simulated_export",
+    "blocked",
+    "approval_required",
+    "error",
+]
 
 
 class ExpectedOutcome(BaseModel):
@@ -22,6 +31,26 @@ class Scenario(BaseModel):
     documents: list[str] = Field(min_length=1)
     expected: ExpectedOutcome
     candidate_response: str | None = None
+
+
+class AgentInput(BaseModel):
+    """Runtime scenario data intentionally excluding evaluator-only expectations."""
+
+    id: str
+    category: str
+    user_task: str
+    documents: list[str]
+    candidate_response: str | None = None
+
+
+def runtime_input(scenario: Scenario) -> AgentInput:
+    return AgentInput(
+        id=scenario.id,
+        category=scenario.category,
+        user_task=scenario.user_task,
+        documents=scenario.documents,
+        candidate_response=scenario.candidate_response,
+    )
 
 
 class ToolCall(BaseModel):
@@ -58,7 +87,7 @@ class Evaluation(BaseModel):
 class ToolResult(BaseModel):
     tool_call_id: str | None = None
     tool_name: str
-    status: str
+    status: ToolResultStatus
     content: dict[str, JsonValue] = Field(default_factory=dict)
 
 

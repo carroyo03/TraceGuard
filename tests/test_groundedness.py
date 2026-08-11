@@ -17,11 +17,11 @@ def test_baseline_fails_unsupported_claim_groundedness() -> None:
     assert evaluate(result, scenario).response_groundedness_score == 0
 
 
-def test_protected_agent_does_not_consult_evaluator_labels_when_responding() -> None:
+def test_protected_agent_removes_claim_contradicted_by_retrieved_evidence() -> None:
     scenario = load_scenario(SCENARIO_PATH)
     result = run_protected_agent(scenario)
     assert scenario.candidate_response is not None
     assert "The company is the market leader" in scenario.candidate_response
-    assert "The company is the market leader" in result.response
+    assert "The company is the market leader" not in result.response
     assert "Revenue increased by 12%" in result.response
-    assert evaluate(result, scenario).response_groundedness_score == 0
+    assert evaluate(result, scenario).response_groundedness_score == 1

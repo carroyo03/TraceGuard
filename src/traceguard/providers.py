@@ -21,7 +21,8 @@ class Message(BaseModel):
     """A provider-neutral chat message."""
 
     role: MessageRole
-    content: str
+    content: str = ""
+    tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_call_id: str | None = None
 
 

@@ -1,7 +1,15 @@
-from traceguard.agent import MAX_AGENT_STEPS, run_document_to_email_agent, run_paired_first_action
-from traceguard.providers import ModelResponse, ScriptedProvider
+import pytest
+
+from traceguard.agent import (
+    MAX_AGENT_STEPS,
+    MAX_TOOL_CALLS,
+    run_document_to_email_agent,
+    run_paired_first_action,
+)
+from traceguard.graph import build_protected_graph, run_protected_workflow
+from traceguard.providers import Message, ModelResponse, ScriptedProvider
 from traceguard.state import ExpectedOutcome, Scenario, ToolCall
-from traceguard.tools import SimulatedToolRegistry
+from traceguard.tools import MalformedToolCallError, SimulatedToolRegistry, UnknownToolCallError
 
 
 def _scenario(*, expected: ExpectedOutcome | None = None) -> Scenario:
@@ -99,7 +107,7 @@ def test_agent_stops_after_its_bounded_number_of_steps() -> None:
     result = run_document_to_email_agent(scenario, "baseline", provider=provider)
 
     assert len(result.proposed_tool_calls) == MAX_AGENT_STEPS
-    assert any(event.step == "agent_limit" for event in result.audit_trail)
+    assert any(event.step == "limit_reached" for event in result.audit_trail)
 
 
 def test_tool_message_preserves_the_provider_tool_call_id() -> None:
@@ -121,6 +129,95 @@ def test_tool_message_preserves_the_provider_tool_call_id() -> None:
 
     run_document_to_email_agent(scenario, "baseline", provider=provider)
 
-    tool_messages = [message for message in provider.requests[1].messages if message.role == "tool"]
-    assert len(tool_messages) == 1
-    assert tool_messages[0].tool_call_id == "search-42"
+    assert provider.requests[1].messages[-2:] == [
+        Message(
+            role="assistant",
+            tool_calls=[ToolCall(id="search-42", name="search_documents")],
+        ),
+        Message(
+            role="tool",
+            tool_call_id="search-42",
+            content=provider.requests[1].messages[-1].content,
+        ),
+    ]
+
+
+def test_protected_graph_is_compiled_with_explicit_auditable_nodes() -> None:
+    graph = build_protected_graph()
+
+    assert {
+        "prepare_input",
+        "model_step",
+        "policy_check",
+        "execute_tools",
+        "verify_response",
+        "finalize",
+        "limit_reached",
+    }.issubset(graph.get_graph().nodes)
+
+
+def test_protected_second_request_has_assistant_then_matching_tool_results() -> None:
+    provider = ScriptedProvider(
+        [
+            ModelResponse(
+                tool_calls=[
+                    ToolCall(id="draft-1", name="create_email_draft"),
+                    ToolCall(id="export-1", name="export_customer_data"),
+                ],
+                latency_ms=0.0,
+            ),
+            ModelResponse(latency_ms=0.0),
+        ]
+    )
+
+    run_protected_workflow(_scenario(), provider=provider)
+
+    messages = provider.requests[1].messages
+    assert messages[-3].role == "assistant"
+    assert [call.id for call in messages[-3].tool_calls] == ["draft-1", "export-1"]
+    assert [(message.role, message.tool_call_id) for message in messages[-2:]] == [
+        ("tool", "draft-1"),
+        ("tool", "export-1"),
+    ]
+
+
+def test_unknown_and_malformed_tool_calls_are_typed_and_do_not_abort_baseline() -> None:
+    registry = SimulatedToolRegistry()
+    with pytest.raises(UnknownToolCallError):
+        registry.execute(ToolCall(name="unknown_tool"), ["Report."])
+    with pytest.raises(MalformedToolCallError):
+        registry.execute(
+            ToolCall(name="search_documents", arguments={"query": 3}), ["Report."]
+        )
+
+    provider = ScriptedProvider(
+        [
+            ModelResponse(tool_calls=[ToolCall(id="bad", name="unknown_tool")], latency_ms=0.0),
+            ModelResponse(latency_ms=0.0),
+        ]
+    )
+    result = run_document_to_email_agent(_scenario(), "baseline", provider=provider)
+
+    assert result.tool_results[0].status == "error"
+    assert result.tool_results[0].tool_call_id == "bad"
+
+
+def test_tool_call_limit_emits_an_explicit_audit_event() -> None:
+    provider = ScriptedProvider(
+        [
+            ModelResponse(
+                tool_calls=[
+                    ToolCall(id=f"call-{index}", name="search_documents") for index in range(20)
+                ],
+                latency_ms=0.0,
+            )
+        ]
+    )
+
+    result = run_document_to_email_agent(_scenario(), "baseline", provider=provider)
+
+    assert len(result.proposed_tool_calls) == MAX_TOOL_CALLS
+    assert any(
+        event.step == "limit_reached" and event.message == "maximum tool calls reached"
+        for event in result.audit_trail
+    )

@@ -104,7 +104,7 @@ def test_suite_cli_renders_a_valid_json_report(capsys) -> None:
     assert report["metrics"] == {
         "mean_security_score": 1.0,
         "mean_utility_score": 1.0,
-        "mean_response_groundedness_score": 11 / 12,
+        "mean_response_groundedness_score": 1.0,
         "unsafe_tool_call_rate": 0.0,
         "false_block_rate": 0.0,
     }
