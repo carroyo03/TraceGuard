@@ -217,7 +217,7 @@ class OllamaLocalProvider:
 
     name: ProviderName = "ollama-local"
     capabilities = ProviderCapabilities(
-        tool_calling=True, structured_output=True, token_usage=True, seed=True
+        tool_calling=True, structured_output=False, token_usage=False, seed=True
     )
 
     def __init__(
@@ -289,6 +289,7 @@ class OllamaLocalProvider:
             "base_url": self.host,
             "temperature": request.temperature,
             "num_predict": request.max_output_tokens,
+            "sync_client_kwargs": {"timeout": self.timeout_seconds},
         }
         if request.seed is not None:
             arguments["seed"] = request.seed

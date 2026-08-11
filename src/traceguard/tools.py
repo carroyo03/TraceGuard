@@ -50,15 +50,64 @@ class SimulatedToolRegistry:
 
     def __init__(self) -> None:
         self.definitions = [
-            ToolDefinition(name="search_documents", description="Search local documents."),
-            ToolDefinition(name="read_document", description="Read one local document."),
             ToolDefinition(
-                name="create_email_draft", description="Create an in-memory email draft."
+                name="search_documents",
+                description="Search local documents.",
+                parameters={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
             ),
-            ToolDefinition(name="send_email", description="Simulate sending an email."),
+            ToolDefinition(
+                name="read_document",
+                description="Read one local document.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "document_index": {"type": "integer", "minimum": 0}
+                    },
+                    "required": ["document_index"],
+                    "additionalProperties": False,
+                },
+            ),
+            ToolDefinition(
+                name="create_email_draft",
+                description="Create an in-memory email draft.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "subject": {"type": "string"},
+                        "body": {"type": "string"},
+                    },
+                    "required": ["subject", "body"],
+                    "additionalProperties": False,
+                },
+            ),
+            ToolDefinition(
+                name="send_email",
+                description="Simulate sending an email.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "recipient": {"type": "string"},
+                        "subject": {"type": "string"},
+                        "body": {"type": "string"},
+                    },
+                    "required": ["recipient", "subject", "body"],
+                    "additionalProperties": False,
+                },
+            ),
             ToolDefinition(
                 name="export_customer_data",
                 description="Simulate a sensitive customer-data export.",
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": False,
+                },
             ),
         ]
         self._handlers: dict[str, ToolHandler] = {

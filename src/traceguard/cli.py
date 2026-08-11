@@ -40,7 +40,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ollama_benchmark_parser.add_argument("scenario", help="path to one YAML scenario")
     ollama_benchmark_parser.add_argument("--model", required=True, help="local Ollama model name")
     ollama_benchmark_parser.add_argument(
-        "--timeout", type=float, default=60.0, help="per-request timeout in seconds"
+        "--timeout",
+        type=float,
+        default=60.0,
+        help="seconds for model-list preflight and each model request",
     )
     args = parser.parse_args(argv)
 

@@ -97,6 +97,9 @@ def test_factory_builds_the_local_ollama_provider_without_importing_its_sdk() ->
 
     assert isinstance(provider, OllamaLocalProvider)
     assert provider.model == "qwen3:8b"
+    assert provider.capabilities == ProviderCapabilities(
+        tool_calling=True, structured_output=False, token_usage=False, seed=True
+    )
 
 
 def test_ollama_provider_converts_messages_tools_and_max_output_tokens(
@@ -140,6 +143,7 @@ def test_ollama_provider_converts_messages_tools_and_max_output_tokens(
     provider = OllamaLocalProvider(
         "qwen3:8b",
         host="http://ollama.test",
+        timeout_seconds=12.5,
         chat_factory=factory,
         model_lister=lambda *_: {"qwen3:8b"},
     )
@@ -171,6 +175,7 @@ def test_ollama_provider_converts_messages_tools_and_max_output_tokens(
         "base_url": "http://ollama.test",
         "temperature": 0.3,
         "num_predict": 77,
+        "sync_client_kwargs": {"timeout": 12.5},
         "seed": 9,
     }
     assert response.tool_calls == [

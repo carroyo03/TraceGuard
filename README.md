@@ -102,7 +102,9 @@ uv run traceguard ollama-benchmark \
 `http://localhost:11434`. The command preflights connectivity, local model
 availability, and an actual tool-calling probe before it runs one paired
 baseline/protected comparison. It is a single local run, not the repeated
-statistical benchmark planned for a later release.
+statistical benchmark planned for a later release. `--timeout` defaults to 60
+seconds and is applied both to the local model-list preflight request and to
+each synchronous ChatOllama model request.
 
 The opt-in smoke test uses `TRACEGUARD_RUN_OLLAMA_SMOKE=true` and requires a
 `TRACEGUARD_OLLAMA_SMOKE_MODEL` that is already available locally. It verifies

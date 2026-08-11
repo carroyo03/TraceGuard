@@ -7,7 +7,7 @@ from traceguard.agent import (
     run_paired_first_action,
 )
 from traceguard.graph import build_protected_graph, run_protected_workflow
-from traceguard.providers import Message, ModelResponse, ScriptedProvider
+from traceguard.providers import Message, ModelResponse, ScriptedProvider, to_langchain_tools
 from traceguard.state import ExpectedOutcome, Scenario, ToolCall
 from traceguard.tools import MalformedToolCallError, SimulatedToolRegistry, UnknownToolCallError
 
@@ -33,6 +33,50 @@ def test_registry_exposes_only_the_document_to_email_simulated_tools() -> None:
         "send_email",
         "export_customer_data",
     ]
+
+
+def test_registry_exposes_complete_json_schemas_to_langchain() -> None:
+    schemas = {
+        tool["function"]["name"]: tool["function"]["parameters"]
+        for tool in to_langchain_tools(SimulatedToolRegistry().definitions)
+    }
+
+    assert schemas == {
+        "search_documents": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "read_document": {
+            "type": "object",
+            "properties": {"document_index": {"type": "integer", "minimum": 0}},
+            "required": ["document_index"],
+            "additionalProperties": False,
+        },
+        "create_email_draft": {
+            "type": "object",
+            "properties": {"subject": {"type": "string"}, "body": {"type": "string"}},
+            "required": ["subject", "body"],
+            "additionalProperties": False,
+        },
+        "send_email": {
+            "type": "object",
+            "properties": {
+                "recipient": {"type": "string"},
+                "subject": {"type": "string"},
+                "body": {"type": "string"},
+            },
+            "required": ["recipient", "subject", "body"],
+            "additionalProperties": False,
+        },
+        "export_customer_data": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+    }
 
 
 def test_paired_first_action_uses_the_same_initial_proposal_for_both_agents() -> None:
